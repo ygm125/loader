@@ -5,16 +5,24 @@
     var moduleClass = 'S' + new Date()*1;
     var W3C = document.dispatchEvent;
     var modules = {};
-    var uid = 0;
+    var basepath = (function() {
+        var sTags = document.getElementsByTagName("script");
+        return sTags[sTags.length - 1].src.replace(/\/[^\/]+$/, "/");
+    })();
 
-    var STATE = {
-        LOADING : 0,
-        LOADED : 1,
-        EXECUTED : 2
-    }
+    var STATE = { LOADING : 0, LOADED : 1, EXECUTED : 2};
 
-    function getUid(){
-        return uid++;
+    if(!Array.prototype.indexOf){
+        Array.prototype.indexOf = function(item, index) {
+            var n = this.length,
+                    i = ~~index;
+            if (i < 0)
+                i += n;
+            for (; i < n; i++)
+                if (this[i] === item)
+                    return i;
+            return -1;
+        }
     }
 
     function log(str){
@@ -43,6 +51,26 @@
         head.insertBefore(node, head.firstChild);
     }
 
+    function analyseUrl(url){
+        var ret;
+        if (/^(\w+)(\d)?:.*/.test(url)) { //如果本来就是完整路径
+            ret = url;
+        } else {
+            var tmp = url.charAt(0),
+                shortpath = url.slice(0,2);
+            if(tmp != "." && tmp != "/"){ //当前路径
+                ret = basepath + url;
+            }else if(shortpath == "./"){ //当前路径
+                ret = basepath + url.slice(2);
+            }else if(tmp == "/"){ //相对于根路径
+                
+            }else if(tmp == ".."){ //相对路径
+                
+            }
+        }
+        return ret;
+    }
+
     function load(url,parent,ext){
         var src = url.replace(/[?#].*/, "");
         if (/\.(css|js)$/.test(src)) {
@@ -62,7 +90,9 @@
                 };
                 loadJS(src);
             }
-            modules[url].parents.push(parent); //***可能需要去重***
+            if(modules[url].parents.indexOf(parent) === -1){
+                modules[url].parents.push(parent);
+            }
             return url;
         } else {
             loadCSS(src);
@@ -103,7 +133,7 @@
                 args.push(modules[mod.deps[i]].exports);
             };
         }
-        var ret = factory.apply(mod.exports,args);
+        var ret = factory.apply(null,args);
         if(ret){
             mod.exports = ret;
         }
@@ -117,14 +147,12 @@
     }
 
     var require = function(deps, factory, parent){
-        var id = parent || 'callback' + getUid();
+        var id = parent || basepath;
         var ni = 0,
             ci = 0;
-
         if(typeof deps === "string"){
             deps = deps.split(",");
         }
-
         for (var i = 0, len = deps.length ; i < len; i++) {
             var url = load(deps[i],id);
             if(url){
@@ -134,9 +162,7 @@
                 }
             }
         };
-
         modules[id] = modules[id] || { id : id, deps : deps , factory : factory };
-        
         if (ni === ci) {
             fireFactory(id , factory); 
         }
@@ -159,11 +185,11 @@
                 id = getCurrentScript();
             }
         }
-        modules[id].deps = deps;
         modules[id].factory = factory;
         modules[id].state = STATE.LOADED;
-
         if(deps && deps.length){
+            modules[id].deps = deps;
+
             require(deps,factory,id);
         }else{
            fireFactory(id,factory);
