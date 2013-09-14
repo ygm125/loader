@@ -2,12 +2,14 @@
 
     var document = window.document;
     var head = document.head || document.getElementsByTagName('head')[0];
-    var moduleClass = 'S' + new Date()*1;
+    var moduleClass = 'mod' + new Date()*1;
     var W3C = document.dispatchEvent;
     var modules = {};
-    var basepath = (function() {
-        var sTags = document.getElementsByTagName("script");
-        return sTags[sTags.length - 1].src.replace(/\/[^\/]+$/, "/");
+    var baseurl = (function() {
+        var tags = document.getElementsByTagName("script"),
+            script = tags[tags.length - 1],
+            url = script.hasAttribute ? script.src : script.getAttribute( 'src', 4 );
+        return script.getAttribute("data-baseurl") || url.replace(/\/[^\/]+$/, "");
     })();
 
     var STATE = { LOADING : 0, LOADED : 1, EXECUTED : 2};
@@ -26,111 +28,107 @@
     }
 
     function log(str){
-        console && console.log(str)
+        console && console.log(str);
     }
 
     function loadJS(url,callback){
         var node = document.createElement("script");
-        node.className = moduleClass; //ÈÃgetCurrentScriptÖ»´¦ÀíÀàÃûÎªmoduleClassµÄscript½Úµã
+        node.className = moduleClass; //è®©getCurrentScriptåªå¤„ç†ç±»åä¸ºmoduleClassçš„scriptèŠ‚ç‚¹
         node[W3C ? "onload" : "onreadystatechange"] = function() {
             if (W3C || /loaded|complete/i.test(node.readyState)) {
                 callback && callback();
+                node[W3C ? "onload" : "onreadystatechange"] = null;
+                head.removeChild(node);
             }
         };
         node.onerror = function() {
-            log('load err:', url);
+            log('failed load:', url);
         };
         node.src = url; 
         head.insertBefore(node, head.firstChild);
     }
 
-    function loadCSS(url){
-        var node = document.createElement("link");
-        node.rel = "stylesheet";
-        node.href = url;
-        head.insertBefore(node, head.firstChild);
-    }
-
-    function analyseUrl(url){
-        var ret;
-        if (/^(\w+)(\d)?:.*/.test(url)) { //Èç¹û±¾À´¾ÍÊÇÍêÕûÂ·¾¶
-            ret = url;
+    function parseId(id){
+        var url,tmp,ret,spath;
+        if (/^(\w+)(\d)?:.*/.test(id)) { //å¦‚æœæœ¬æ¥å°±æ˜¯å®Œæ•´è·¯å¾„
+            ret = id;
         } else {
-            var tmp = url.charAt(0),
-                shortpath = url.slice(0,2);
-            if(tmp != "." && tmp != "/"){ //µ±Ç°Â·¾¶
-                ret = basepath + url;
-            }else if(shortpath == "./"){ //µ±Ç°Â·¾¶
-                ret = basepath + url.slice(2);
-            }else if(tmp == "/"){ //Ïà¶ÔÓÚ¸ùÂ·¾¶
-                
-            }else if(tmp == ".."){ //Ïà¶ÔÂ·¾¶
-                
+            tmp = id.charAt(0);
+            spath = id.slice(0,2);
+            if(tmp != "." && tmp != "/"){ //å½“å‰è·¯å¾„
+                ret = baseurl + "/" + id;
+            }else if(spath == "./"){ //å½“å‰è·¯å¾„
+                ret = baseurl + id.slice(1);
+            }else if(spath == ".."){ //ç›¸å¯¹è·¯å¾„
+                url = baseurl;
+                id = id.replace(/\.\.\//g,function(){
+                    url = url.substr(0,url.lastIndexOf("/"));
+                    return "";
+                });
+                ret = url + "/" + id;
             }
+        }
+        if (!/\.js$/.test(ret)) {
+            ret += ".js";
         }
         return ret;
     }
 
-    function load(url,parent,ext){
-        var src = url.replace(/[?#].*/, "");
-        if (/\.(css|js)$/.test(src)) {
-            ext = RegExp.$1;
+    function parseIds(ids){
+        for (var i = 0; i < ids.length; i++) {
+            ids[i] = parseId(ids[i]);
+        };
+        return ids;
+    }
+
+    function load(id,parent){
+        if (!modules[id]) { //å¦‚æœä¹‹å‰æ²¡æœ‰åŠ è½½è¿‡
+            modules[id] = {
+                state:STATE.LOADING,
+                parents:[],
+                exports: {}
+            };
+            loadJS(id);
         }
-        if (!ext) { //Èç¹ûÃ»ÓĞºó×ºÃû,¼ÓÉÏºó×ºÃû
-            src += ".js";
-            ext = "js";
+        if(modules[id].parents.indexOf(parent) === -1){
+            modules[id].parents.push(parent);
         }
-        if (ext === "js") {
-            if (!modules[url]) { //Èç¹ûÖ®Ç°Ã»ÓĞ¼ÓÔØ¹ı ***url»¹ĞèÒªÔÚ´¦ÀíÏÂ***
-                modules[url] = {
-                    id: url,
-                    state:STATE.LOADING,
-                    parents:[],
-                    exports: {}
-                };
-                loadJS(src);
-            }
-            if(modules[url].parents.indexOf(parent) === -1){
-                modules[url].parents.push(parent);
-            }
-            return url;
-        } else {
-            loadCSS(src);
-        }
+        return id;
     }
 
     function getCurrentScript() {
-        // ²Î¿¼ https://github.com/samyk/jiagra/blob/master/jiagra.js
+        // å‚è€ƒ https://github.com/samyk/jiagra/blob/master/jiagra.js
         var stack,sourceURL;
         try {
-            a.b.c(); //Ç¿ÖÆ±¨´í,ÒÔ±ã²¶»ñe.stack
-        } catch (e) { //safariµÄ´íÎó¶ÔÏóÖ»ÓĞline,sourceId,sourceURL
+            a.b.c(); //å¼ºåˆ¶æŠ¥é”™,ä»¥ä¾¿æ•è·e.stack
+        } catch (e) { //safariçš„é”™è¯¯å¯¹è±¡åªæœ‰line,sourceId,sourceURL
             stack = e.stack;
             sourceURL = e.sourceURL;
         }
-        if (stack) {//±ê×¼ä¯ÀÀÆ÷(IE10¡¢Chrome¡¢Opera¡¢Firefox)
-            stack = stack.split(/[@ ]/g).pop(); //È¡µÃ×îºóÒ»ĞĞ,×îºóÒ»¸ö¿Õ¸ñ»ò@Ö®ºóµÄ²¿·Ö
-            stack = stack[0] === "(" ? stack.slice(1, -1) : stack.replace(/\s/, ""); //È¥µô»»ĞĞ·û
-            return stack.replace(/(:\d+)?:\d+$/i, ""); //È¥µôĞĞºÅÓë»òĞí´æÔÚµÄ³ö´í×Ö·ûÆğÊ¼Î»ÖÃ
+        if (stack) {//æ ‡å‡†æµè§ˆå™¨(IE10ã€Chromeã€Operaã€Firefox)
+            stack = stack.split(/[@ ]/g).pop(); //å–å¾—æœ€åä¸€è¡Œ,æœ€åä¸€ä¸ªç©ºæ ¼æˆ–@ä¹‹åçš„éƒ¨åˆ†
+            stack = stack[0] === "(" ? stack.slice(1, -1) : stack.replace(/\s/, ""); //å»æ‰æ¢è¡Œç¬¦
+            return stack.replace(/(:\d+)?:\d+$/i, ""); //å»æ‰è¡Œå·ä¸æˆ–è®¸å­˜åœ¨çš„å‡ºé”™å­—ç¬¦èµ·å§‹ä½ç½®
         }
-        if(sourceURL){//Õë¶ÔSafari
+        if(sourceURL){//é’ˆå¯¹Safari
             return sourceURL;
         }
         // IE6-9
-        var nodes = head.getElementsByTagName("script"); //Ö»ÔÚhead±êÇ©ÖĞÑ°ÕÒ
+        var nodes = head.getElementsByTagName("script"); //åªåœ¨headæ ‡ç­¾ä¸­å¯»æ‰¾
         for (var i = nodes.length, node; node = nodes[--i]; ) {
-            if (node.readyState === "interactive") {//node.className === moduleClass && 
+            if (node.className === moduleClass && node.readyState === "interactive") {
                 return node.src;
             }
         }
     }
 
-    var fireFactory = function(id, factory){
+    var fireFactory = function(id,deps,factory){
         var mod = modules[id];
-        if(mod.deps){
+        if(deps){
             var args = [];
-            for (var i = 0; i < mod.deps.length; i++) {
-                args.push(modules[mod.deps[i]].exports);
+            for (var i = 0; i < deps.length; i++) {
+
+                args.push(modules[deps[i]].exports);
             };
         }
         var ret = factory.apply(null,args);
@@ -147,12 +145,10 @@
     }
 
     var require = function(deps, factory, parent){
-        var id = parent || basepath;
-        var ni = 0,
-            ci = 0;
-        if(typeof deps === "string"){
-            deps = deps.split(",");
-        }
+        var id = parent || baseurl;
+            id = parseId(id);
+            deps = parseIds(deps);
+        var ni = 0, ci = 0;
         for (var i = 0, len = deps.length ; i < len; i++) {
             var url = load(deps[i],id);
             if(url){
@@ -162,9 +158,9 @@
                 }
             }
         };
-        modules[id] = modules[id] || { id : id, deps : deps , factory : factory };
+        modules[id] = modules[id] || { deps : deps , factory : factory };
         if (ni === ci) {
-            fireFactory(id , factory); 
+            fireFactory(id ,deps ,factory); 
         }
     }
 
@@ -172,12 +168,12 @@
         if(arguments.length === 1){
             factory = id;
             id = getCurrentScript();
+            deps = [];
         }
         if(arguments.length === 2){
             if(typeof id === "string"){
-                id = id;
                 factory = deps;
-                deps = null;
+                deps = [];
             }
             if(typeof id === "array"){
                 factory = deps;
@@ -185,15 +181,16 @@
                 id = getCurrentScript();
             }
         }
+        id = parseId(id);
+        deps = parseIds(deps);
         modules[id].factory = factory;
+        modules[id].deps = deps;
         modules[id].state = STATE.LOADED;
-        if(deps && deps.length){
-            modules[id].deps = deps;
-
-            require(deps,factory,id);
-        }else{
-           fireFactory(id,factory);
-        }
+        require(deps,factory,id);
+    }
+    
+    define.amd = {
+        modules : modules
     }
 
     window.require = require;
