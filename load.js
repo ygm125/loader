@@ -12,6 +12,8 @@
         return script.getAttribute("data-baseurl") || url.replace(/\/[^\/]+$/, "");
     })();
 
+    var toString = Object.prototype.toString;
+
     var STATE = { LOADING : 0, LOADED : 1, EXECUTED : 2};
 
     if(!Array.prototype.indexOf){
@@ -25,6 +27,10 @@
                     return i;
             return -1;
         }
+    }
+    
+    function isType(obj,type){
+        return toString.call(obj) === '[object '+ type +']';
     }
 
     function log(str){
@@ -145,7 +151,7 @@
     }
 
     var require = function(deps, factory, parent){
-        var id = parent || baseurl;
+        var id = parent || (+new Date + '');
             id = parseId(id);
             deps = parseIds(deps);
         var ni = 0, ci = 0;
@@ -171,11 +177,11 @@
             deps = [];
         }
         if(arguments.length === 2){
-            if(typeof id === "string"){
+            if(isType(id, "String")){
                 factory = deps;
                 deps = [];
             }
-            if(typeof id === "array"){
+            if(isType(id, "Array")){
                 factory = deps;
                 deps = id;
                 id = getCurrentScript();
